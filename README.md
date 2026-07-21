@@ -1,78 +1,79 @@
 # K2 Smart Heatsoak Calibration
 
-Fix inconsistent first layers on the Creality K2 Plus by calibrating **after** the machine is thermally stable — not before.
+Fixes inconsistent first layers on the **Creality K2 Plus**. Stock behavior calibrates on a cold machine, then heats — but the bed and frame expand while heating, so you print on an outdated calibration. This mod reverses the order: **heat → soak → calibrate → print.**
 
-## The problem
+**What it does:**
+- Parallel heating with bed assist (bed boosts to 105 °C near the nozzle → chamber reaches target much faster)
+- Filament-driven heatsoak with on-screen countdown (45 min ASA/ABS, 15 min PLA/PETG)
+- **Warm-restart detection:** chamber still near target at start (back-to-back prints) → soak auto-shortens to 15 min
+- Fresh nozzle clean + bed mesh **after** the soak, on the hot, stable machine
+- All logic lives in one macro on the printer; the slicer only passes your filament profile values
 
-The K2 Plus calibrates (bed mesh, Z reference) on a cold machine, then heats up. But the bed, frame and gantry expand as they heat: the bed changes shape, the Z reference drifts. By the time your ASA print actually starts, the machine no longer matches the calibration it is printing on. Result: inconsistent first layers, poor squish, parts detaching mid-print — the classic K2 complaints.
+**Files:**
+| File | Goes where |
+|---|---|
+| `smart_heatsoak_calibrate.cfg` | on the printer (via Fluidd) |
+| `machine_start_gcode.gcode` | CrealityPrint → Machine start G-code |
+| `fallback/slicer-only-full.gcode` | only if a firmware update ever wipes the macro (see FAQ) |
+| `fallback/creality-stock-original.gcode` | restore factory behavior (uninstall) |
 
-## The fix
+---
 
-Reverse the order. This mod:
+## Install
 
-1. **Heats everything in parallel** — chamber heater, bed and nozzle standby all start at once instead of sequentially.
-2. **Bed assist** — while the chamber heats, the bed temporarily boosts to 105 °C and rises to Z5 (just under the nozzle) for maximum convection. The chamber reaches target noticeably faster. The bed then returns to your filament's bed temp *before* the soak clock starts, so the bed shape you soak, calibrate and print on is exactly the profile temperature. (Thermal expansion is elastic — the bed has no "memory" of the boost.)
-3. **Filament-driven heatsoak** — 45 min for chamber-temp filaments (ASA/ABS), 15 min stabilisation for PLA/PETG, all driven by your filament profiles. A live countdown shows on the printer screen.
-4. **Fresh calibration on the hot, stable machine** — nozzle clean + bed mesh happen *after* the soak, so the mesh describes the bed you actually print on. Every print, every time.
-5. *(Macro version only)* **Warm-restart detection** — if the chamber is still near target when you start (back-to-back prints), the soak automatically shortens from 45 to 15 minutes.
+### A. Prepare (one-time checks)
 
-No firmware mods are required for the basic version — it is pure slicer start g-code and survives every firmware update.
+1. CrealityPrint → printer settings → **Print Calibration** toggle **OFF**.
+2. Check `printer.cfg` contains `forced_leveling: false`.
+3. Every ASA/ABS filament profile: **chamber temperature 45 or higher** (firmware only heats above 40).
+4. Backup your current Machine start G-code to a text file.
 
-## Requirements
+### B. Macro on the printer
 
-- Creality K2 Plus (K2 Pro should work identically — same firmware family and chamber commands; untested). The base K2 has **no** active chamber heater and is not supported for the ASA/ABS path.
-- CrealityPrint (leading for this guide). **OrcaSlicer works identically** — CrealityPrint is Orca-based, the variables and the *Machine start G-code* field are the same.
-- In CrealityPrint: **Print Calibration toggle OFF** (the mod replaces it with a better-timed calibration).
-- `forced_leveling: false` in printer.cfg (usually already the case; check after firmware updates).
-- Chamber temperature in your ASA/ABS filament profiles set to **45 °C or higher** — the firmware only actively heats above S40 (below that it only runs the fan).
+5. Fluidd → **Configuration** → create new file: `smart_heatsoak_calibrate.cfg`
+6. Paste the contents of [`smart_heatsoak_calibrate.cfg`](smart_heatsoak_calibrate.cfg) → save.
+7. Open `printer.cfg` → add near the other includes: `[include smart_heatsoak_calibrate.cfg]` → save.
+8. Click **Firmware restart**.
+9. Console smoke test: `SMART_HEATSOAK_CALIBRATE BED_TEMP=60 CHAMBER_TEMP=0 EXTRUDER_TEMP=200` — countdown appears = macro works. Cancel it.
 
-## Option 1 — Slicer-only (recommended, works on stock firmware)
+### C. Slicer
 
-1. Open CrealityPrint → printer settings → **Machine start G-code**.
-2. Copy the *top section* of your current start g-code somewhere safe (backup).
-3. Replace everything **above** your `{if multicolor_method}` block with the contents of [`slicer-only/machine_start_gcode.gcode`](slicer-only/machine_start_gcode.gcode). Keep your multicolor/purge block below it, unchanged.
-4. Save the printer profile, **re-slice** your model (old sliced files still contain the old start code!), print.
+10. CrealityPrint → printer settings → **Machine start G-code** → select all → paste the contents of [`machine_start_gcode.gcode`](machine_start_gcode.gcode) → save profile.
+11. **Re-slice** your model (old sliced files still contain the old start code).
+12. Print.
 
-What you will see on screen, in order: `Heating chamber...` → `Bed back to profile temp` → `Heatsoak: 45 min left` counting down per 5 minutes → `Calibrating...` → print.
+**Expected screen sequence:** `Kamer opwarmen...` → `Bed terug naar profieltemp` → `Heatsoak: nog 45 min` (counts down per 5 min) → `Kalibreren...` → print starts. On a warm restart, step 3 shows 15 min instead.
 
-Cancelling during the soak takes effect within ~1 minute (the soak is split into 1-minute blocks). Cancelling during chamber heating waits until the chamber target is reached — use Fluidd's emergency stop if you need to abort instantly.
+> **OrcaSlicer:** step 10 is identical — same field (printer settings → Machine G-code → Machine start G-code), same variables. This guide uses CrealityPrint naming.
 
-## Option 2 — Macro version (adds warm-restart detection)
+**Tuning:** all values (soak times, boost temp, warm-restart margin) are in the `_SMART_HEATSOAK_VARS` block at the top of the cfg. Change one number, firmware restart, done.
 
-Everything from Option 1, plus the printer decides by itself whether a full soak is needed: if the chamber is already within 8 °C of target at start (machine stayed warm between prints), it soaks 15 minutes instead of 45.
-
-1. Open Fluidd → **Configuration** → create a new file `smart_heatsoak_calibrate.cfg`.
-2. Paste the contents of [`macro/smart_heatsoak_calibrate.cfg`](macro/smart_heatsoak_calibrate.cfg), save.
-3. In `printer.cfg`, add near the other includes: `[include smart_heatsoak_calibrate.cfg]`, save, **firmware restart**.
-4. Test in the console: `SMART_HEATSOAK_CALIBRATE BED_TEMP=60 CHAMBER_TEMP=0 EXTRUDER_TEMP=200` — if you see the heatsoak countdown start, the macro is alive (cancel after a minute, this was just the smoke test).
-5. Replace your Machine start G-code with [`macro/machine_start_gcode_thin.gcode`](macro/machine_start_gcode_thin.gcode) (a single `SMART_HEATSOAK_CALIBRATE` call + your multicolor block). Re-slice.
-
-All tunables (soak times, boost temp, warm-restart margin) live in one `_SMART_HEATSOAK_VARS` block at the top of the cfg.
-
-**Keep the Option 1 profile as a fallback.** If a firmware update ever wipes the macro, `SMART_HEATSOAK_CALIBRATE` returns *Unknown command* — slice with the Option 1 profile while you re-add the cfg.
+---
 
 ## FAQ
 
-**Why does my bed briefly show 105 °C?**
-That is the bed assist during chamber heating. The target drops back to your profile temp before the soak starts; the actual temperature takes a few minutes to settle, which the 45-minute soak absorbs easily. You never calibrate or print on the 105 °C shape.
+**Bed shows 105 °C at the start?** That's the bed assist speeding up chamber heating. It returns to your profile temp *before* the soak clock starts. You never calibrate or print on the 105 shape.
 
-**The printer calibrated immediately after a restart, skipping everything.**
-That was the firmware's own self-check after a reboot (including after an emergency stop) — not this mod. The cold mesh it makes is harmlessly replaced by the fresh hot mesh this mod probes after the soak.
+**Printer calibrated instantly after a reboot, skipping everything?** That's the firmware's own self-check after restart (also after emergency stop) — not this mod. Its cold mesh is replaced by the fresh hot mesh after the soak.
 
-**Can I cache the mesh and skip meshing next time?**
-Not reliably. The bed shape follows its current temperature state; after any cool-down the cached hot mesh no longer matches reality, and removing the flex plate changes things too. Probing takes ~2 minutes on an hour-long start — it is the cheapest insurance in the whole procedure.
+**`Unknown command: SMART_HEATSOAK_CALIBRATE` after a firmware update?** The update wiped the macro/include. Quick fix: paste `fallback/slicer-only-full.gcode` into Machine start G-code (full logic, no macro needed, no warm-restart detection), re-slice, keep printing. Then redo install steps 5–8 and switch back.
 
-**Isn't 45 minutes long?**
-It is deliberately conservative. The chamber air is fast; the frame and gantry are slow, and they determine when drift stops. You can measure your own machine's minimum: once at temp, run `PROBE_ACCURACY` every 10 minutes — the moment the Z value stops shifting is your true soak time. Because this mod meshes *after* the soak, a modestly shorter soak is more forgiving than on a stock setup.
+**Cancel takes long?** During the soak: max 1 minute. During chamber heating (M191): a normal cancel waits for the chamber target — use Fluidd's emergency stop for instant abort.
 
-**Does this work with the CFS / multicolor?**
-Yes — the multicolor/purge block from Creality's default start g-code stays in the slicer, unchanged, below the mod.
+**45 min too long?** It's conservative on purpose. Measure your machine: once at temp, run `PROBE_ACCURACY` every 10 min; when Z stops shifting, that's your minimum soak. Then change one variable in the cfg.
 
-**Orca users?**
-Identical. Same field (printer settings → Machine G-code → Machine start G-code), same variables. CrealityPrint is used as the reference in this guide because it ships with the K2.
+**Cache the mesh to skip probing?** Don't. Bed shape follows current temperature; a cached hot mesh is wrong after any cool-down or plate removal. Probing costs ~2 min.
 
-## Credits & background
+**Uninstall / back to stock?** Paste `fallback/creality-stock-original.gcode` into Machine start G-code, turn the Print Calibration toggle back ON, re-slice. Optionally remove the include line from `printer.cfg`.
 
-Inspired in part by ideas from [Jacob10383/k2-improvements](https://github.com/Jacob10383/k2-improvements) (bed assist concept, calibrate-after-stability principle) — reimplemented without firmware mods and without the bed-stays-at-105 issue, and extended with filament-driven soak logic and warm-restart detection.
+**Multicolor/CFS?** Fully supported — the purge block stays in the slicer g-code, included.
 
-Tested on: Creality K2 Plus. Please report your firmware/CrealityPrint versions in issues so the compatibility list can grow.
+**K2 Pro?** Same firmware family and chamber commands, should work identically — untested. Base **K2 is not supported** for ASA/ABS (no active chamber heater).
+
+---
+
+## Credits
+
+Bed-assist concept and calibrate-after-stability principle inspired by [Jacob10383/k2-improvements](https://github.com/Jacob10383/k2-improvements) — reimplemented without invasive firmware mods, without the bed-stuck-at-105 issue, extended with filament-driven soak and warm-restart detection.
+
+Tested on: Creality K2 Plus. Report your firmware + CrealityPrint version in issues.
