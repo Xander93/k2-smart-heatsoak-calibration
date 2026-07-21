@@ -57,7 +57,7 @@ Fixes inconsistent first layers on the **Creality K2 Plus**. Stock behavior cali
 
 **`Unknown command: SMART_HEATSOAK_CALIBRATE` after a firmware update?** The update wiped the macro/include. Redo install steps 5–8 (takes ~5 minutes). Need to print right now? Paste `fallback/creality-stock-original.gcode` temporarily.
 
-**Cancel takes long?** During the soak: max 1 minute. During chamber heating (M191): a normal cancel waits for the chamber target — use Fluidd's emergency stop for instant abort.
+**Cancel takes long?** During the soak: ~1 second (the countdown pauses per second). During chamber heating (M191): a normal cancel waits for the chamber target — use Fluidd's emergency stop for instant abort.
 
 **45 min too long?** It's conservative on purpose. Measure your machine: once at temp, run `PROBE_ACCURACY` every 10 min; when Z stops shifting, that's your minimum soak. Then change one variable in the cfg.
 
