@@ -14,7 +14,6 @@ Fixes inconsistent first layers on the **Creality K2 Plus**. Stock behavior cali
 |---|---|
 | `smart_heatsoak_calibrate.cfg` | on the printer (via Fluidd) |
 | `machine_start_gcode.gcode` | CrealityPrint → Machine start G-code |
-| `fallback/slicer-only-full.gcode` | only if a firmware update ever wipes the macro (see FAQ) |
 | `fallback/creality-stock-original.gcode` | restore factory behavior (uninstall) |
 
 ---
@@ -25,7 +24,7 @@ Fixes inconsistent first layers on the **Creality K2 Plus**. Stock behavior cali
 
 1. CrealityPrint → printer settings → **Print Calibration** toggle **OFF**.
 2. Check `printer.cfg` contains `forced_leveling: false`.
-3. Every ASA/ABS filament profile: **chamber temperature 45 or higher** (firmware only heats above 40).
+3. Every ASA/ABS filament profile: **chamber temperature 45 or higher**. Below 41 the printer never turns the heater on (it only runs a fan), so lower values silently do nothing.
 4. Backup your current Machine start G-code to a text file.
 
 ### B. Macro on the printer
@@ -56,7 +55,7 @@ Fixes inconsistent first layers on the **Creality K2 Plus**. Stock behavior cali
 
 **Printer calibrated instantly after a reboot, skipping everything?** That's the firmware's own self-check after restart (also after emergency stop) — not this mod. Its cold mesh is replaced by the fresh hot mesh after the soak.
 
-**`Unknown command: SMART_HEATSOAK_CALIBRATE` after a firmware update?** The update wiped the macro/include. Quick fix: paste `fallback/slicer-only-full.gcode` into Machine start G-code (full logic, no macro needed, no warm-restart detection), re-slice, keep printing. Then redo install steps 5–8 and switch back.
+**`Unknown command: SMART_HEATSOAK_CALIBRATE` after a firmware update?** The update wiped the macro/include. Redo install steps 5–8 (takes ~5 minutes). Need to print right now? Paste `fallback/creality-stock-original.gcode` temporarily.
 
 **Cancel takes long?** During the soak: max 1 minute. During chamber heating (M191): a normal cancel waits for the chamber target — use Fluidd's emergency stop for instant abort.
 
