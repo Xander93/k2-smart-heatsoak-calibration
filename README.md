@@ -2,10 +2,12 @@
 
 Fixes inconsistent first layers on the **Creality K2 Plus**. Stock behavior calibrates on a cold machine, then heats — but the bed and frame expand while heating, so you print on an outdated calibration. This mod reverses the order: **heat → soak → calibrate → print.**
 
+> This mod assumes you're comfortable with root access and editing Klipper configs. If that's not you, this mod isn't for you (yet).
+
 **What it does:**
 - Parallel heating with bed assist (bed boosts to 105 °C near the nozzle → chamber reaches target much faster)
 - Filament-driven heatsoak with on-screen countdown (45 min ASA/ABS, 15 min PLA/PETG)
-- **Warm-restart detection:** chamber still near target at start (back-to-back prints) → soak auto-shortens to 15 min
+- **Warm-restart detection (triple-checked):** previous print ended < 30 min ago *and* chamber still near target *and* bed still residually warm → soak auto-shortens to 15 min
 - Fresh nozzle clean + bed mesh **after** the soak, on the hot, stable machine
 - All logic lives in one macro on the printer; the slicer only passes your filament profile values
 
@@ -33,11 +35,11 @@ Fixes inconsistent first layers on the **Creality K2 Plus**. Stock behavior cali
 6. Paste the contents of [`smart_heatsoak_calibrate.cfg`](smart_heatsoak_calibrate.cfg) → save.
 7. Open `printer.cfg` → add near the other includes: `[include smart_heatsoak_calibrate.cfg]` → save.
 8. Click **Firmware restart**.
-9. Console smoke test: `SMART_HEATSOAK_CALIBRATE BED_TEMP=60 CHAMBER_TEMP=0 EXTRUDER_TEMP=200` — countdown appears = macro works. Cancel it.
+9. Console smoke test, both macros: first `SMART_HEATSOAK_MARK_END` (no error = timestamp works), then `SMART_HEATSOAK_CALIBRATE BED_TEMP=60 CHAMBER_TEMP=0 EXTRUDER_TEMP=200` — countdown appears = macro works. Cancel it.
 
 ### C. Slicer
 
-10. CrealityPrint → printer settings → **Machine start G-code** → select all → paste the contents of [`machine_start_gcode.gcode`](machine_start_gcode.gcode) → save profile.
+10. CrealityPrint → printer settings → **Machine start G-code** → select all → paste the contents of [`machine_start_gcode.gcode`](machine_start_gcode.gcode). Then open **Machine end G-code** and add this as the **first line** (keep the rest unchanged): `SMART_HEATSOAK_MARK_END` → save profile.
 11. **Re-slice** your model (old sliced files still contain the old start code).
 12. Print.
 
