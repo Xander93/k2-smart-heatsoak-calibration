@@ -77,7 +77,9 @@ These are deliberately conservative defaults, not magic numbers. Measure your ow
 
 **"Kamer zakt niet meer - omgeving is ~38 C"?** Working as intended. Your room is warmer than the 35 °C target, so cooling further is physically impossible; the macro detects the plateau within a minute and proceeds instead of waiting forever (which is exactly what the naive `TEMPERATURE_WAIT` approach did).
 
-**I cancelled a print right after the heatsoak — do I lose 45 minutes on the next start?** No. The soak stamp is written the moment the soak completes, independent of how the print ends. A restart within the stamp window (default 45 min, same Klipper session) gets the short soak even if the bed has already cooled below 50 °C. Cancelling *during* the soak deliberately does not stamp — a half-soaked machine isn't done.
+**I cancelled a print right after the heatsoak — do I lose 45 minutes on the next start?** No. The soak stamp is written the moment the soak completes, independent of how the print ends. A restart within the stamp window (default 30 min, same Klipper session) gets the short soak even if the bed has already cooled below 50 °C. Cancelling *during* the soak deliberately does not stamp — a half-soaked machine isn't done.
+
+**Soak was only 5 minutes right after powering on?** Fixed in v1.7. The firmware's boot self-check heats the bed to ~60 °C, which used to fool the bed-based warm-restart check. The PLA path now also requires a warm chamber (`warm_kamer_min`, default 30 °C) — a self-check heats only the bed, a real print heats both.
 
 **Printer calibrated instantly after a reboot, skipping everything?** That's the firmware's own self-check after restart (also after emergency stop) — not this mod. Its cold mesh is replaced by the fresh hot mesh after the soak.
 
