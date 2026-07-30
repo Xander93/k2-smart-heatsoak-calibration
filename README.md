@@ -25,7 +25,7 @@ This mod assumes you're comfortable with root access and editing Klipper configs
 | File | Goes where |
 |---|---|
 | `smart_heatsoak_calibrate.cfg` (v1.6) | on the printer (via Fluidd) |
-| `machine_start_gcode_K2Plus_langere_purge.txt` (v1.3) | CrealityPrint → Machine start G-code |
+| `machine_start_gcode.gcode` (v1.3) | CrealityPrint → Machine start G-code |
 | `fallback/creality-stock-original.gcode` | restore factory behavior (uninstall) |
 
 ## Install
@@ -48,7 +48,7 @@ This mod assumes you're comfortable with root access and editing Klipper configs
 
 ### C. Slicer
 
-11. CrealityPrint → printer settings → Machine start G-code → select all → paste the contents of `machine_start_gcode_K2Plus_langere_purge.txt` → save profile.
+11. CrealityPrint → printer settings → Machine start G-code → select all → paste the contents of `machine_start_gcode.gcode` → save profile.
     *(Unlike earlier versions of this mod, nothing needs to be added to the Machine **end** G-code — the soak stamp is written by the start macro itself, right after the soak completes. If you previously added `SMART_HEATSOAK_MARK_END` there, you may remove it; a harmless stub keeps it from erroring if you don't.)*
 12. **Re-slice your model** (old sliced files still contain the old start code).
 13. Print. Watch the first purge line once — it now starts further left (X80).
