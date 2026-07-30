@@ -9,7 +9,7 @@ This mod assumes you're comfortable with root access and editing Klipper configs
 - Parallel heating with bed assist (bed boosts to 105 °C near the nozzle → chamber reaches target much faster)
 - Filament-driven heatsoak with on-screen countdown (45 min ASA/ABS, 15 min PLA/PETG)
 - **Adaptive chamber cooling (PLA/PETG):** measures once per minute whether the chamber is still dropping. Stops at target, at a plateau (= ambient reached — e.g. a hot garage in summer), or at a hard cap. Can never hang indefinitely, unlike a bare `TEMPERATURE_WAIT`. The chamber fan runs at full speed during cooling.
-- **Warm-restart detection (two independent signals):** a *soak stamp* written after every completed heatsoak (monotonic clock, survives print cancels), **or** the bed still residually warm (≥ 50 °C — physical proof of a recent print). Either one → soak auto-shortens: 45 → 15 min for ASA/ABS, 15 → 5 min for PLA/PETG. After a Klipper restart the stamp self-invalidates (clock resets) and only the temperature check applies. Fails safe in every direction.
+- **Warm-restart detection — one strict rule for all filaments:** short soak only when a fresh *soak stamp* **and** warm temperatures agree. The stamp (written after every completed heatsoak; monotonic clock, valid 30 min, survives print cancels) proves a soak really happened — a boot self-check or a hot garage can fake temperatures, but never the stamp. The temperatures (ASA/ABS: chamber near target and bed ≥ 50 °C; PLA/PETG: bed ≥ 50 °C) confirm the machine hasn't cooled since. Any missing piece = full soak per the filament guideline, no exceptions. After a Klipper restart the stamp self-invalidates and the next start is always the full soak.
 - Fresh nozzle clean + bed mesh after the soak, on the hot, stable machine
 - Nozzle standby (140 °C) is applied *after* the cooling phase, not before — no heater fighting the cooldown
 - All logic lives in one macro on the printer; the slicer only passes your filament profile values
@@ -24,9 +24,70 @@ This mod assumes you're comfortable with root access and editing Klipper configs
 
 | File | Goes where |
 |---|---|
-| `smart_heatsoak_calibrate.cfg` (v1.6) | on the printer (via Fluidd) |
+| `smart_heatsoak_calibrate.cfg` (v2.2) | on the printer (via Fluidd) |
 | `machine_start_gcode.gcode` (v1.3) | CrealityPrint → Machine start G-code |
 | `fallback/creality-stock-original.gcode` | restore factory behavior (uninstall) |
+
+## Flow (v2.2)
+
+Every release keeps this diagram in sync with the macro — if the logic changes, the picture changes in the same commit.
+
+```mermaid
+flowchart TD
+    A["Slicer start-gcode roept macro aan met<br/>EXTRUDER_TEMP / BED_TEMP / CHAMBER_TEMP<br/>(uit het geselecteerde filamentprofiel)"] --> A2["Klipper rekent de HELE macro nu al uit:<br/>profielwaardes + sensormetingen worden<br/>EENMALIG vastgelegd en staan verderop<br/>al als vast getal in de gcode.<br/>Ze kunnen dus nooit meer verloren gaan."]
+    A2 --> B["Schone start:<br/>bed uit, nozzle uit<br/>(zet alleen de HEATERS uit,<br/>de vastgelegde waardes blijven)"]
+    B --> C["Bewijs BEOORDELEN (lezen, niet schrijven):<br/>stempel_vers = is de stempel in het geheugen geldig?<br/>(klok &gt; 0 EN stempel &gt; 0 EN klok &gt; stempel<br/>EN leeftijd &lt; 30 min &mdash; uitkomst is vaak NEE)<br/>bed_warm = bed &ge; BED_TEMP − 10"]
+    C --> D0{"Vangnet: CHAMBER_TEMP tussen 1 en 40?<br/>(fysiek onhaalbaar: firmware-heater<br/>start pas boven de 40)"}
+    D0 -- "ja" --> D0a["Behandel als 0 + melding<br/>'Chamber onhaalbaar - koud-pad'"] --> D
+    D0 -- "nee" --> D
+    D{"CHAMBER_TEMP &gt; 0?<br/>= DOELwaarde uit het filamentprofiel,<br/>NIET de gemeten kamertemp —<br/>PLA in een garage van 38 &deg;C blijft koud-pad"}
+
+    %% ========== CHAMBER-PAD ==========
+    D -- "ja: ASA, ABS, PA-CF, PC, ..." --> E["Nozzle standby 140 &deg;C"]
+    E --> F{"stempel_vers<br/>EN kamer &ge; CHAMBER_TEMP − 8<br/>EN bed_warm?"}
+    F -- "alles waar" --> G["SOAK = 15 min<br/>'Stempel + temps warm'"]
+    F -- "iets ontbreekt" --> H["SOAK = 45 min<br/>'Koude start'"]
+    G --> I["Kamer aan (M141)<br/>bed-boost naar 105 &deg;C<br/>homen, Z5 voor convectie"]
+    H --> I
+    I --> J["M191: wacht tot kamer op doel<br/>(firmware, geen timeout!)"]
+    J --> K["Bed terug naar BED_TEMP<br/>en wachten (M190)"]
+    K --> L["Countdown SOAK minuten<br/>(scherm per 5 min, cancel &le; 1 s)"]
+
+    %% ========== KOUD-PAD ==========
+    D -- "nee: PLA, PETG, TPU, ..." --> M["Chamber heater uit (M141 S0)<br/>kamer wordt nooit verwarmd"]
+    M --> N{"pla_koelen = 1<br/>EN kamer &gt; 35 &deg;C?"}
+    N -- "ja" --> O["Kamerventilator vol aan<br/>koelloop starten"]
+    N -- "nee" --> S["Nozzle standby 140 &deg;C<br/>(pas NA het koelen)"]
+    O --> P{"Elke minuut meten<br/>(sub-macro: wordt pas bij UITVOERING<br/>gerenderd, dus dit is de enige plek<br/>met verse sensordata)"}
+    P -- "kamer &le; 35" --> Q["'Kamer op doel' — stop"]
+    P -- "zakt &lt; 0,3 &deg;C/min" --> R["'Plateau = omgeving bereikt'<br/>(warme garage) — stop"]
+    P -- "zakt nog" --> P2["prev onthouden,<br/>1 minuut wachten"] --> P
+    P -- "15 min plafond" --> R
+    Q --> Fan["Fan terug naar firmware"]
+    R --> Fan
+    Fan --> S
+    S --> T["Bed naar BED_TEMP<br/>en wachten (M190)"]
+    T --> U{"stempel_vers<br/>EN bed_warm?"}
+    U -- "beide waar" --> V["Countdown 5 min<br/>'Stempel + bed warm'"]
+    U -- "iets ontbreekt" --> W["Countdown 15 min<br/>(volle soak, geen excuses)"]
+
+    %% ========== GEZAMENLIJK EINDE ==========
+    L --> X["_HEATSOAK_STAMP: de ENIGE plek waar<br/>de stempel wordt GESCHREVEN<br/>&rarr; gcode-variabele in het geheugen,<br/>geen bestand (alleen na AFGERONDE soak)"]
+    V --> X
+    W --> X
+    X --> Y["Verse mesh op hete, stabiele machine<br/>(BED_MESH_CALIBRATE_START_PRINT)"]
+    Y --> Z["START_PRINT<br/>terug naar Creality's routine<br/>&rarr; slicer purge-lijn &rarr; print"]
+
+    style A2 fill:#d7bde2,stroke:#6c3483,color:#1c2128
+    style D0 fill:#f9e79f,stroke:#b7950b,color:#1c2128
+    style D fill:#f9e79f,stroke:#b7950b
+    style F fill:#f9e79f,stroke:#b7950b
+    style U fill:#f9e79f,stroke:#b7950b
+    style N fill:#f9e79f,stroke:#b7950b
+    style P fill:#aed6f1,stroke:#2471a3
+    style X fill:#a9dfbf,stroke:#1e8449
+    style J fill:#f5b7b1,stroke:#943126
+```
 
 ## Install
 
@@ -62,7 +123,7 @@ OrcaSlicer: step 11 is identical — same field (printer settings → Machine G-
 
 | Filament | Chamber | Soak | Reason |
 |---|---|---|---|
-| PLA / PETG (chamber = 0) | cooled toward < 35 °C first (bounded, adaptive) | 15 min cold / 5 min warm restart | Only the bed heats (50–80 °C); a light plate settles fast. Chamber heat is actively avoided — PLA softens near 55 °C. If ambient is above 35 °C, cooling is physically impossible; the plateau detection recognizes this within ~1 minute and proceeds (PLA prints fine at a 38 °C chamber). |
+| PLA / PETG (chamber = 0) | cooled toward < 35 °C first (bounded, adaptive) | 15 min cold / 5 min warm restart | Only the bed heats (50–80 °C); a light plate settles fast. Chamber heat is actively avoided — PLA softens near 55 °C (the chamber is never *heated* for PLA; cooling is a quality choice, switchable via `pla_koelen`). If ambient is above 35 °C, cooling is physically impossible; the plateau detection recognizes this within ~1 minute and proceeds (PLA prints fine at a 38 °C chamber). |
 | ABS / ASA (chamber 45–60) | 55–60 °C | 45 min cold / 15 min warm restart | The whole frame, gantry and Z screws expand with the chamber. These heavy parts heat slowly; measurable Z drift typically stops after 30–45 min. |
 
 These are deliberately conservative defaults, not magic numbers. Measure your own machine: once at temperature, run `PROBE_ACCURACY` every 10 minutes — the moment the Z value stops shifting is your minimum soak. Because this mod meshes after the soak, a somewhat shorter soak is far more forgiving than on stock (late drift is partly absorbed by the fresh mesh).
@@ -77,9 +138,9 @@ These are deliberately conservative defaults, not magic numbers. Measure your ow
 
 **"Kamer zakt niet meer - omgeving is ~38 C"?** Working as intended. Your room is warmer than the 35 °C target, so cooling further is physically impossible; the macro detects the plateau within a minute and proceeds instead of waiting forever (which is exactly what the naive `TEMPERATURE_WAIT` approach did).
 
-**I cancelled a print right after the heatsoak — do I lose 45 minutes on the next start?** No. The soak stamp is written the moment the soak completes, independent of how the print ends. A restart within the stamp window (default 30 min, same Klipper session) gets the short soak even if the bed has already cooled below 50 °C. Cancelling *during* the soak deliberately does not stamp — a half-soaked machine isn't done.
+**I cancelled a print right after the heatsoak — do I lose 45 minutes on the next start?** Not if you restart promptly. The soak stamp is written the moment the soak completes, independent of how the print ends; restart within the stamp window (default 30 min, same Klipper session) *while the bed is still ≥ 50 °C* and you get the short soak. Once the bed has cooled below 50 the machine gets the full soak again — strict by design. Cancelling *during* the soak deliberately does not stamp.
 
-**Soak was only 5 minutes right after powering on?** Fixed in v1.7. The firmware's boot self-check heats the bed to ~60 °C, which used to fool the bed-based warm-restart check. The PLA path now also requires a warm chamber (`warm_kamer_min`, default 30 °C) — a self-check heats only the bed, a real print heats both.
+**Soak was only 5 minutes right after powering on?** Fixed (v1.9). The firmware's boot self-check heats the bed, and a hot room heats the chamber — both used to fool the temperature-based warm-restart check. Since v1.9 every filament path shortens only when a fresh soak stamp *and* warm temperatures agree; run `HEATSOAK_STATUS` in the console to see exactly which soak the next start will get and why.
 
 **Printer calibrated instantly after a reboot, skipping everything?** That's the firmware's own self-check after restart (also after emergency stop) — not this mod. Its cold mesh is replaced by the fresh hot mesh after the soak.
 
@@ -91,13 +152,15 @@ These are deliberately conservative defaults, not magic numbers. Measure your ow
 
 **Cache the mesh to skip probing?** Don't. Bed shape follows current temperature; a cached hot mesh is wrong after any cool-down or plate removal. Probing costs ~2 min.
 
-**Uninstall / back to stock?** Paste `fallback/creality-stock-original.gcode` into Machine start G-code, turn the Print Calibration toggle back ON, re-slice. Optionally remove the include line from `printer.cfg` and delete `~/heatsoak_state.cfg`.
+**Uninstall / back to stock?** Paste `fallback/creality-stock-original.gcode` into Machine start G-code, turn the Print Calibration toggle back ON, re-slice. Optionally remove the include line from `printer.cfg`. Nothing else to clean up — the mod writes no files.
 
 **Multicolor/CFS?** Fully supported — the purge block stays in the slicer g-code, included and improved (see start G-code notes above).
 
 **K2 Pro?** Same firmware family and chamber commands, should work identically — untested. Base K2 is not supported for ASA/ABS (no active chamber heater).
 
 ## Credits
+
+The soak stamp borrows Creality's own clock: `printer.system_stats.monotonic`, the field their stock `START_TIMER`/`END_TIMER` macros use in `gcode_macro.cfg` — that's where the discovery came from that a usable (monotonic) clock exists in this firmware at all. The timing pattern is theirs; the stamp keeps the clock value in a gcode variable exactly as they do — no file is written — and adds a validity window plus restart detection. An earlier version stored it on disk via `save_variables`; that turned out to buy nothing, since the monotonic clock already limits validity to a single Klipper session.
 
 Bed-assist concept and calibrate-after-stability principle inspired by [Jacob10383/k2-improvements](https://github.com/Jacob10383/k2-improvements) — reimplemented without invasive firmware mods, without the bed-stuck-at-105 issue, extended with filament-driven soak, adaptive plateau-detecting chamber cooling, dual-signal warm-restart detection (soak stamp + residual bed heat) and a parametric, longer purge line with a safe wipe.
 

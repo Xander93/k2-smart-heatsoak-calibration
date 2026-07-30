@@ -1,0 +1,54 @@
+flowchart TD
+    A["Slicer start-gcode roept macro aan met<br/>EXTRUDER_TEMP / BED_TEMP / CHAMBER_TEMP<br/>(uit het geselecteerde filamentprofiel)"] --> A2["Klipper rekent de HELE macro nu al uit:<br/>profielwaardes + sensormetingen worden<br/>EENMALIG vastgelegd en staan verderop<br/>al als vast getal in de gcode.<br/>Ze kunnen dus nooit meer verloren gaan."]
+    A2 --> B["Schone start:<br/>bed uit, nozzle uit<br/>(zet alleen de HEATERS uit,<br/>de vastgelegde waardes blijven)"]
+    B --> C["Bewijs BEOORDELEN (lezen, niet schrijven):<br/>stempel_vers = is de stempel in het geheugen geldig?<br/>(klok &gt; 0 EN stempel &gt; 0 EN klok &gt; stempel<br/>EN leeftijd &lt; 30 min &mdash; uitkomst is vaak NEE)<br/>bed_warm = bed &ge; BED_TEMP − 10"]
+    C --> D0{"Vangnet: CHAMBER_TEMP tussen 1 en 40?<br/>(fysiek onhaalbaar: firmware-heater<br/>start pas boven de 40)"}
+    D0 -- "ja" --> D0a["Behandel als 0 + melding<br/>'Chamber onhaalbaar - koud-pad'"] --> D
+    D0 -- "nee" --> D
+    D{"CHAMBER_TEMP &gt; 0?<br/>= DOELwaarde uit het filamentprofiel,<br/>NIET de gemeten kamertemp —<br/>PLA in een garage van 38 &deg;C blijft koud-pad"}
+
+    %% ========== CHAMBER-PAD ==========
+    D -- "ja: ASA, ABS, PA-CF, PC, ..." --> E["Nozzle standby 140 &deg;C"]
+    E --> F{"stempel_vers<br/>EN kamer &ge; CHAMBER_TEMP − 8<br/>EN bed_warm?"}
+    F -- "alles waar" --> G["SOAK = 15 min<br/>'Stempel + temps warm'"]
+    F -- "iets ontbreekt" --> H["SOAK = 45 min<br/>'Koude start'"]
+    G --> I["Kamer aan (M141)<br/>bed-boost naar 105 &deg;C<br/>homen, Z5 voor convectie"]
+    H --> I
+    I --> J["M191: wacht tot kamer op doel<br/>(firmware, geen timeout!)"]
+    J --> K["Bed terug naar BED_TEMP<br/>en wachten (M190)"]
+    K --> L["Countdown SOAK minuten<br/>(scherm per 5 min, cancel &le; 1 s)"]
+
+    %% ========== KOUD-PAD ==========
+    D -- "nee: PLA, PETG, TPU, ..." --> M["Chamber heater uit (M141 S0)<br/>kamer wordt nooit verwarmd"]
+    M --> N{"pla_koelen = 1<br/>EN kamer &gt; 35 &deg;C?"}
+    N -- "ja" --> O["Kamerventilator vol aan<br/>koelloop starten"]
+    N -- "nee" --> S["Nozzle standby 140 &deg;C<br/>(pas NA het koelen)"]
+    O --> P{"Elke minuut meten<br/>(sub-macro: wordt pas bij UITVOERING<br/>gerenderd, dus dit is de enige plek<br/>met verse sensordata)"}
+    P -- "kamer &le; 35" --> Q["'Kamer op doel' — stop"]
+    P -- "zakt &lt; 0,3 &deg;C/min" --> R["'Plateau = omgeving bereikt'<br/>(warme garage) — stop"]
+    P -- "zakt nog" --> P2["prev onthouden,<br/>1 minuut wachten"] --> P
+    P -- "15 min plafond" --> R
+    Q --> Fan["Fan terug naar firmware"]
+    R --> Fan
+    Fan --> S
+    S --> T["Bed naar BED_TEMP<br/>en wachten (M190)"]
+    T --> U{"stempel_vers<br/>EN bed_warm?"}
+    U -- "beide waar" --> V["Countdown 5 min<br/>'Stempel + bed warm'"]
+    U -- "iets ontbreekt" --> W["Countdown 15 min<br/>(volle soak, geen excuses)"]
+
+    %% ========== GEZAMENLIJK EINDE ==========
+    L --> X["_HEATSOAK_STAMP: de ENIGE plek waar<br/>de stempel wordt GESCHREVEN<br/>&rarr; gcode-variabele in het geheugen,<br/>geen bestand (alleen na AFGERONDE soak)"]
+    V --> X
+    W --> X
+    X --> Y["Verse mesh op hete, stabiele machine<br/>(BED_MESH_CALIBRATE_START_PRINT)"]
+    Y --> Z["START_PRINT<br/>terug naar Creality's routine<br/>&rarr; slicer purge-lijn &rarr; print"]
+
+    style A2 fill:#d7bde2,stroke:#6c3483,color:#1c2128
+    style D0 fill:#f9e79f,stroke:#b7950b,color:#1c2128
+    style D fill:#f9e79f,stroke:#b7950b
+    style F fill:#f9e79f,stroke:#b7950b
+    style U fill:#f9e79f,stroke:#b7950b
+    style N fill:#f9e79f,stroke:#b7950b
+    style P fill:#aed6f1,stroke:#2471a3
+    style X fill:#a9dfbf,stroke:#1e8449
+    style J fill:#f5b7b1,stroke:#943126
