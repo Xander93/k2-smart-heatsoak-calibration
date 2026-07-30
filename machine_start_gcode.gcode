@@ -1,10 +1,23 @@
 ; ============================================================
-; MACHINE START G-CODE v1.0 - K2 Plus (dunne versie)
+; MACHINE START G-CODE v1.1 - K2 Plus (dunne versie)
 ; Alle startlogica zit nu in de SMART_HEATSOAK_CALIBRATE-macro op de printer
 ; (smart_heatsoak_calibrate.cfg). Deze slicer-gcode geeft alleen de
 ; filamentwaardes door en doet daarna het multicolor/purge-blok.
 ; Vereist: smart_heatsoak_calibrate.cfg geinstalleerd + include in printer.cfg
 ; Print Calibration-schuif UIT, forced_leveling: false.
+;
+; v1.3 - purge-geometrie volledig parametrisch: lijnhoogte is nu
+;        {initial_layer_print_height + 0.1}, de E-hoeveelheid en
+;        snelheden schalen mee, en de afveegdaling is daardoor
+;        altijd exact -0.1 (eindigt op eerste-laaghoogte).
+;        Werkt daarmee ook correct met 0.6+ nozzles / dikke lagen.
+; v1.2 - afveegdiepte niet meer hardcoded: eindigt nu op de eerste-
+;        laaghoogte via {initial_layer_print_height - 0.3}. Vegen is
+;        daarmee per definitie nooit lager/gevaarlijker dan de eerste
+;        laag zelf, wat de Z-offset van de printer ook is.
+; v1.1 - purge lijn verlengd van 50 mm (X150-X200) naar 125 mm (X80-X205)
+;        rekenregel: 0.07484 mm filament per mm lijn
+;        segmenten van 10 mm  ->  E{(initial_layer_print_height + 0.1) * 2.4947}
 ; ============================================================
 
 SMART_HEATSOAK_CALIBRATE EXTRUDER_TEMP=[nozzle_temperature_initial_layer] BED_TEMP=[bed_temperature_initial_layer_single] CHAMBER_TEMP={chamber_temperature[initial_no_support_extruder]}
@@ -152,18 +165,24 @@ M8200 O
 M204 S2000
 G1 Z3 F600
 G1 X160 F12000
-G1 X150 Y-1 F30000
+G1 X80 Y-1 F30000
 G1 E[retraction_length]  F300
-G1 Z0.3 F1200
-G1 X175 E9  F{outer_wall_volumetric_speed/(24/20)  * 60}
-G1 X180 E.3742  F{outer_wall_volumetric_speed/(0.3*0.5)/4*60}
-G1 X185 E.3742  F{outer_wall_volumetric_speed/(0.3*0.5)*60}
-G1 X190 E.3742  F{outer_wall_volumetric_speed/(0.3*0.5)/4*60}
-G1 X195 E.3742  F{outer_wall_volumetric_speed/(0.3*0.5)*60}
-G1 X200 E.3742  F{outer_wall_volumetric_speed/(0.3*0.5)/4*60}
+G1 Z{initial_layer_print_height + 0.1} F1200
+G1 X105 E9  F{outer_wall_volumetric_speed/(24/20)  * 60}
+G1 X115 E{(initial_layer_print_height + 0.1) * 2.4947}  F{outer_wall_volumetric_speed/((initial_layer_print_height + 0.1)*0.6)/4*60}
+G1 X125 E{(initial_layer_print_height + 0.1) * 2.4947}  F{outer_wall_volumetric_speed/((initial_layer_print_height + 0.1)*0.6)*60}
+G1 X135 E{(initial_layer_print_height + 0.1) * 2.4947}  F{outer_wall_volumetric_speed/((initial_layer_print_height + 0.1)*0.6)/4*60}
+G1 X145 E{(initial_layer_print_height + 0.1) * 2.4947}  F{outer_wall_volumetric_speed/((initial_layer_print_height + 0.1)*0.6)*60}
+G1 X155 E{(initial_layer_print_height + 0.1) * 2.4947}  F{outer_wall_volumetric_speed/((initial_layer_print_height + 0.1)*0.6)/4*60}
+G1 X165 E{(initial_layer_print_height + 0.1) * 2.4947}  F{outer_wall_volumetric_speed/((initial_layer_print_height + 0.1)*0.6)*60}
+G1 X175 E{(initial_layer_print_height + 0.1) * 2.4947}  F{outer_wall_volumetric_speed/((initial_layer_print_height + 0.1)*0.6)/4*60}
+G1 X185 E{(initial_layer_print_height + 0.1) * 2.4947}  F{outer_wall_volumetric_speed/((initial_layer_print_height + 0.1)*0.6)*60}
+G1 X195 E{(initial_layer_print_height + 0.1) * 2.4947}  F{outer_wall_volumetric_speed/((initial_layer_print_height + 0.1)*0.6)/4*60}
+G1 X205 E{(initial_layer_print_height + 0.1) * 2.4947}  F{outer_wall_volumetric_speed/((initial_layer_print_height + 0.1)*0.6)*60}
 G91
-G1 X1 Z-0.300
+G1 X1 Z-0.1 F1200
 G1 X4
+G1 Z1 F600
 G92 E0
 
 {else}
@@ -172,17 +191,22 @@ M104 S[nozzle_temperature_initial_layer]
 M204 S2000
 G1 Z3 F600
 M83
-G1 X150 Y-1 F30000
+G1 X80 Y-1 F30000
 G1 E[retraction_length]  F300
-G1 Z0.3 F1200
-G1 X175 E9  F{outer_wall_volumetric_speed/(24/20)  * 60}
-G1 X180 E.3742  F{outer_wall_volumetric_speed/(0.3*0.5)/4*60}
-G1 X185 E.3742  F{outer_wall_volumetric_speed/(0.3*0.5)*60}
-G1 X190 E.3742  F{outer_wall_volumetric_speed/(0.3*0.5)/4*60}
-G1 X195 E.3742  F{outer_wall_volumetric_speed/(0.3*0.5)*60}
-G1 X200 E.3742  F{outer_wall_volumetric_speed/(0.3*0.5)/4*60}
+G1 Z{initial_layer_print_height + 0.1} F1200
+G1 X105 E9  F{outer_wall_volumetric_speed/(24/20)  * 60}
+G1 X115 E{(initial_layer_print_height + 0.1) * 2.4947}  F{outer_wall_volumetric_speed/((initial_layer_print_height + 0.1)*0.6)/4*60}
+G1 X125 E{(initial_layer_print_height + 0.1) * 2.4947}  F{outer_wall_volumetric_speed/((initial_layer_print_height + 0.1)*0.6)*60}
+G1 X135 E{(initial_layer_print_height + 0.1) * 2.4947}  F{outer_wall_volumetric_speed/((initial_layer_print_height + 0.1)*0.6)/4*60}
+G1 X145 E{(initial_layer_print_height + 0.1) * 2.4947}  F{outer_wall_volumetric_speed/((initial_layer_print_height + 0.1)*0.6)*60}
+G1 X155 E{(initial_layer_print_height + 0.1) * 2.4947}  F{outer_wall_volumetric_speed/((initial_layer_print_height + 0.1)*0.6)/4*60}
+G1 X165 E{(initial_layer_print_height + 0.1) * 2.4947}  F{outer_wall_volumetric_speed/((initial_layer_print_height + 0.1)*0.6)*60}
+G1 X175 E{(initial_layer_print_height + 0.1) * 2.4947}  F{outer_wall_volumetric_speed/((initial_layer_print_height + 0.1)*0.6)/4*60}
+G1 X185 E{(initial_layer_print_height + 0.1) * 2.4947}  F{outer_wall_volumetric_speed/((initial_layer_print_height + 0.1)*0.6)*60}
+G1 X195 E{(initial_layer_print_height + 0.1) * 2.4947}  F{outer_wall_volumetric_speed/((initial_layer_print_height + 0.1)*0.6)/4*60}
+G1 X205 E{(initial_layer_print_height + 0.1) * 2.4947}  F{outer_wall_volumetric_speed/((initial_layer_print_height + 0.1)*0.6)*60}
 G91
-G1 X1 Z-0.300
+G1 X1 Z-0.1 F1200
 G1 X4
 G92 E0
 G1 Z1 F600
